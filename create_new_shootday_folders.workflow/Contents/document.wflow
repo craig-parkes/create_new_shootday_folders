@@ -1,0 +1,357 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>AMApplicationBuild</key>
+	<string>528</string>
+	<key>AMApplicationVersion</key>
+	<string>2.10</string>
+	<key>AMDocumentVersion</key>
+	<string>2</string>
+	<key>actions</key>
+	<array>
+		<dict>
+			<key>action</key>
+			<dict>
+				<key>AMAccepts</key>
+				<dict>
+					<key>Container</key>
+					<string>List</string>
+					<key>Optional</key>
+					<true/>
+					<key>Types</key>
+					<array>
+						<string>com.apple.applescript.object</string>
+					</array>
+				</dict>
+				<key>AMActionVersion</key>
+				<string>1.0.2</string>
+				<key>AMApplication</key>
+				<array>
+					<string>Automator</string>
+				</array>
+				<key>AMParameterProperties</key>
+				<dict>
+					<key>source</key>
+					<dict/>
+				</dict>
+				<key>AMProvides</key>
+				<dict>
+					<key>Container</key>
+					<string>List</string>
+					<key>Types</key>
+					<array>
+						<string>com.apple.applescript.object</string>
+					</array>
+				</dict>
+				<key>ActionBundlePath</key>
+				<string>/System/Library/Automator/Run AppleScript.action</string>
+				<key>ActionName</key>
+				<string>Run AppleScript</string>
+				<key>ActionParameters</key>
+				<dict>
+					<key>source</key>
+					<string>on run {input, parameters}
+	
+	-- Ask for new shoot date
+	display dialog "Enter new shoot date (YYMMDD):" default answer ""
+	set newDate to text returned of result
+	
+	-- Validate date
+	if length of newDate is not 6 then
+		display alert "Date must be 6 digits (YYMMDD)."
+		return input
+	end if
+	
+	try
+		newDate as integer
+	on error
+		display alert "Date must contain only digits."
+		return input
+	end try
+	
+	-- Get selected parent folder
+	set parentFolderAlias to item 1 of input
+	
+	tell application "Finder"
+		set folderItems to every folder of parentFolderAlias
+	end tell
+	
+	--------------------------------------------------
+	-- PASS 1: FIND THE LATEST DATE
+	--------------------------------------------------
+	
+	set latestDate to 0
+	
+	repeat with f in folderItems
+		
+		tell application "Finder"
+			set folderName to name of f
+		end tell
+		
+		set parsedData to my parseFolderName(folderName)
+		
+		if parsedData is not missing value then
+			set folderDate to (item 2 of parsedData) as integer
+			
+			if folderDate &gt; latestDate then
+				set latestDate to folderDate
+			end if
+		end if
+		
+	end repeat
+	
+	if latestDate = 0 then
+		display alert "No matching folders found."
+		return input
+	end if
+	
+	--------------------------------------------------
+	-- PASS 2: FIND HIGHEST SEQUENCE PER LETTER
+	-- FOR THE LATEST DATE ONLY
+	--------------------------------------------------
+	
+	set suffixLetters to {}
+	set suffixVersions to {}
+	set suffixPrefixes to {}
+	
+	repeat with f in folderItems
+		
+		tell application "Finder"
+			set folderName to name of f
+		end tell
+		
+		set parsedData to my parseFolderName(folderName)
+		
+		if parsedData is not missing value then
+			
+			set prefixText to item 1 of parsedData
+			set folderDate to (item 2 of parsedData) as integer
+			set suffixLetter to item 3 of parsedData
+			set versionNum to item 4 of parsedData
+			
+			if folderDate = latestDate then
+				
+				set idx to my indexOfItem(suffixLetter, suffixLetters)
+				
+				if idx = 0 then
+					set end of suffixLetters to suffixLetter
+					set end of suffixVersions to versionNum
+					set end of suffixPrefixes to prefixText
+				else
+					if versionNum &gt; item idx of suffixVersions then
+						set item idx of suffixVersions to versionNum
+						set item idx of suffixPrefixes to prefixText
+					end if
+				end if
+				
+			end if
+			
+		end if
+		
+	end repeat
+	
+	if (count of suffixLetters) = 0 then
+		display alert "No folders found for latest date."
+		return input
+	end if
+	
+	--------------------------------------------------
+	-- BUILD LIST OF NEW FOLDERS
+	--------------------------------------------------
+	
+	set foldersToCreate to {}
+	set confirmText to "Create these folders:" &amp; return &amp; return
+	
+	repeat with i from 1 to count of suffixLetters
+		
+		set prefixText to item i of suffixPrefixes
+		set suffixLetter to item i of suffixLetters
+		
+		set nextVersion to (item i of suffixVersions) + 1
+		
+		set versionText to ("00" &amp; nextVersion)
+		set versionText to text ((length of versionText) - 2) thru -1 of versionText
+		
+		set newFolderName to prefixText &amp; newDate &amp; "_" &amp; suffixLetter &amp; versionText
+		
+		set end of foldersToCreate to newFolderName
+		
+		set confirmText to confirmText &amp; newFolderName &amp; return
+		
+	end repeat
+	
+	display dialog confirmText buttons {"Cancel", "Create"} default button "Create"
+	
+	--------------------------------------------------
+	-- CREATE FOLDERS
+	--------------------------------------------------
+	
+	tell application "Finder"
+		
+		repeat with newFolderName in foldersToCreate
+			
+			if not (exists folder (contents of newFolderName) of parentFolderAlias) then
+				make new folder at parentFolderAlias with properties {name:(contents of newFolderName)}
+			end if
+			
+		end repeat
+		
+	end tell
+	
+	return input
+	
+end run
+
+
+on parseFolderName(folderName)
+	
+	-- Expected pattern:
+	-- PREFIX + YYMMDD + "_" + LETTER + ###
+
+	if (length of folderName) &lt; 11 then return missing value
+	
+	try
+		
+		set suffixLetter to character ((length of folderName) - 3) of folderName
+		
+		set versionText to text ((length of folderName) - 2) thru (length of folderName) of folderName
+		set versionNum to versionText as integer
+		
+		set dateStartPos to (length of folderName) - 10
+		
+		set dateText to text dateStartPos thru (dateStartPos + 5) of folderName
+		
+		dateText as integer -- validate date
+		
+		if dateStartPos &gt; 1 then
+			set prefixText to text 1 thru (dateStartPos - 1) of folderName
+		else
+			set prefixText to ""
+		end if
+		
+		return {prefixText, dateText, suffixLetter, versionNum}
+		
+	on error
+		return missing value
+	end try
+	
+end parseFolderName
+
+
+on indexOfItem(theItem, theList)
+	
+	repeat with i from 1 to count of theList
+		if item i of theList = theItem then return i
+	end repeat
+	
+	return 0
+	
+end indexOfItem</string>
+				</dict>
+				<key>BundleIdentifier</key>
+				<string>com.apple.Automator.RunScript</string>
+				<key>CFBundleVersion</key>
+				<string>1.0.2</string>
+				<key>CanShowSelectedItemsWhenRun</key>
+				<false/>
+				<key>CanShowWhenRun</key>
+				<true/>
+				<key>Category</key>
+				<array>
+					<string>AMCategoryUtilities</string>
+				</array>
+				<key>Class Name</key>
+				<string>RunScriptAction</string>
+				<key>InputUUID</key>
+				<string>776EA1DD-EDBA-4A97-BE82-F7A392AE4E98</string>
+				<key>Keywords</key>
+				<array>
+					<string>Run</string>
+				</array>
+				<key>OutputUUID</key>
+				<string>CF6B0C38-F06C-4F7A-AC78-95EA2E106FBB</string>
+				<key>UUID</key>
+				<string>13E23088-7358-4604-BF53-5F9C6E84F3E0</string>
+				<key>UnlocalizedApplications</key>
+				<array>
+					<string>Automator</string>
+				</array>
+				<key>arguments</key>
+				<dict>
+					<key>0</key>
+					<dict>
+						<key>default value</key>
+						<string>on run {input, parameters}
+	
+	(* Your script goes here *)
+	
+	return input
+end run</string>
+						<key>name</key>
+						<string>source</string>
+						<key>required</key>
+						<string>0</string>
+						<key>type</key>
+						<string>0</string>
+						<key>uuid</key>
+						<string>0</string>
+					</dict>
+				</dict>
+				<key>conversionLabel</key>
+				<integer>0</integer>
+				<key>isViewVisible</key>
+				<integer>1</integer>
+				<key>location</key>
+				<string>309.000000:368.000000</string>
+				<key>nibPath</key>
+				<string>/System/Library/Automator/Run AppleScript.action/Contents/Resources/Base.lproj/main.nib</string>
+			</dict>
+			<key>isViewVisible</key>
+			<integer>1</integer>
+		</dict>
+	</array>
+	<key>connectors</key>
+	<dict/>
+	<key>workflowMetaData</key>
+	<dict>
+		<key>applicationBundleID</key>
+		<string>com.apple.finder</string>
+		<key>applicationBundleIDsByPath</key>
+		<dict>
+			<key>/System/Library/CoreServices/Finder.app</key>
+			<string>com.apple.finder</string>
+		</dict>
+		<key>applicationPath</key>
+		<string>/System/Library/CoreServices/Finder.app</string>
+		<key>applicationPaths</key>
+		<array>
+			<string>/System/Library/CoreServices/Finder.app</string>
+		</array>
+		<key>inputTypeIdentifier</key>
+		<string>com.apple.Automator.fileSystemObject.folder</string>
+		<key>outputTypeIdentifier</key>
+		<string>com.apple.Automator.nothing</string>
+		<key>presentationMode</key>
+		<integer>15</integer>
+		<key>processesInput</key>
+		<false/>
+		<key>serviceApplicationBundleID</key>
+		<string>com.apple.finder</string>
+		<key>serviceApplicationPath</key>
+		<string>/System/Library/CoreServices/Finder.app</string>
+		<key>serviceInputTypeIdentifier</key>
+		<string>com.apple.Automator.fileSystemObject.folder</string>
+		<key>serviceOutputTypeIdentifier</key>
+		<string>com.apple.Automator.nothing</string>
+		<key>serviceProcessesInput</key>
+		<false/>
+		<key>systemImageName</key>
+		<string>NSActionTemplate</string>
+		<key>useAutomaticInputType</key>
+		<false/>
+		<key>workflowTypeIdentifier</key>
+		<string>com.apple.Automator.servicesMenu</string>
+	</dict>
+</dict>
+</plist>
