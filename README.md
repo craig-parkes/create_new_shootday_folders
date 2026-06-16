@@ -1,7 +1,10 @@
 # create_new_shootday_folders
 An Apple Script for iterating new shoot day folders for film / television / content creators to use as a Quick Action in MacOS
 When working on a production iterating new shoot day folders to copy data to can be a repetitive task, especially for studio shoots which have regular splits.
+
 This is a short Applescript that you can you safe as a Quick Action in MacOS - So you can right click a folder and under Quick Actions make new folders that iterate card rolls from the last shootdate.
+
+Note: If you don't have shootdate folders with a YYMMDD string in the name inside the folder you run the script on it does nothing - it's really just for iterating new folders when you are basically shooting with the same cameras from shootday 2 onwards.  
 
 Foldername Format:
 The script assumes a folder format where there is any sort of prefix descriptor, followed by _YYMMDD format, followed by a _*### reel number
